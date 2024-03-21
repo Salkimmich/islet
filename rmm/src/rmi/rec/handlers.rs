@@ -95,14 +95,9 @@ pub fn set_event_handler(mainloop: &mut Mainloop) {
         let rec = rec_granule.content_mut::<Rec<'_>>();
         let realm_id = rec.realmid()?;
 
-        if !rec.runnable() {
-            return Err(Error::RmiErrorRec);
-        }
-
-        if let RecState::Running = rec.get_state() {
-            error!("Rec is already running: {:?}", rec);
-            return Err(Error::RmiErrorRec);
-        }
+        // read Run
+        let mut run = copy_from_host_or_ret!(Run, run_pa, Error::RmiErrorRec);
+        trace!("{:?}", run);
 
         match get_granule_if!(rec.owner()?, GranuleState::RD)?
             .content::<Rd>()
@@ -120,13 +115,19 @@ pub fn set_event_handler(mainloop: &mut Mainloop) {
             }
         }
 
-        if rec.psci_pending() {
+        // runnable oder is lower
+        if !rec.runnable() {
             return Err(Error::RmiErrorRec);
         }
 
-        // read Run
-        let mut run = copy_from_host_or_ret!(Run, run_pa, Error::RmiErrorRec);
-        trace!("{:?}", run);
+        if let RecState::Running = rec.get_state() {
+            error!("Rec is already running: {:?}", rec);
+            return Err(Error::RmiErrorRec);
+        }
+
+        if rec.psci_pending() {
+            return Err(Error::RmiErrorRec);
+        }
 
         if !crate::gic::validate_state(&run) {
             return Err(Error::RmiErrorRec);
