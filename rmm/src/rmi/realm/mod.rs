@@ -102,15 +102,22 @@ pub fn set_event_handler(mainloop: &mut Mainloop) {
     listen!(mainloop, rmi::REALM_DESTROY, |arg, _ret, rmm| {
         // get the lock for Rd
         let mut rd_granule = get_granule_if!(arg[0], GranuleState::RD)?;
+        if rd_granule.has_children() {
+            return Err(Error::RmiErrorRealm(0));
+        }
         let rd = rd_granule.content::<Rd>();
-        remove(rd.id())?;
+        let vmid = rd.id();
 
         let mut rtt_granule = get_granule_if!(rd.rtt_base(), GranuleState::RTT)?;
+        if rtt_granule.has_children() {
+            return Err(Error::RmiErrorRealm(0));
+        }
         set_granule(&mut rtt_granule, GranuleState::Delegated)?;
 
         // change state when everything goes fine.
         set_granule(&mut rd_granule, GranuleState::Delegated)?;
         rmm.page_table.unmap(arg[0]);
+        remove(vmid)?;
 
         Ok(())
     });
