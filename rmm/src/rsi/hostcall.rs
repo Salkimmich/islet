@@ -45,15 +45,18 @@ impl core::fmt::Debug for HostCall {
     }
 }
 
-impl safe_abstraction::RawPtr for HostCall {
+impl safe_abstraction::RawPtr for HostCall {}
+
+impl safe_abstraction::raw_ptr::SafetyChecked for HostCall {
     fn has_permission(&self) -> bool {
+        use safe_abstraction::RawPtr;
         let align_down = self.addr() & !(GRANULE_SIZE - 1);
         get_granule_if!(align_down, GranuleState::Data).is_ok()
     }
 }
 
 // TODO: Note the rationale
-impl safe_abstraction::raw_ptr::DeveloperAssured for HostCall {
+impl safe_abstraction::raw_ptr::SafetyAssured for HostCall {
     fn initialized(&self) -> bool {
         true
     }
