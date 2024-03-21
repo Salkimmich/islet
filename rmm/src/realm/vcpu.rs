@@ -2,7 +2,6 @@ use super::Realm;
 
 use crate::gic;
 use crate::realm::registry::get_realm;
-use crate::realm::registry::RMS;
 use crate::realm::timer;
 use crate::rmi::error::Error;
 use alloc::sync::{Arc, Weak};
@@ -94,7 +93,7 @@ pub unsafe fn current() -> Option<&'static mut VCPU<crate::realm::context::Conte
     }
 }
 
-pub fn create_vcpu(id: usize) -> Result<usize, Error> {
+pub fn create_vcpu(id: usize, mpidr: u64) -> Result<usize, Error> {
     let realm = get_realm(id).ok_or(Error::RmiErrorInput)?;
 
     let page_table = realm.lock().page_table.lock().get_base_address();
@@ -103,15 +102,11 @@ pub fn create_vcpu(id: usize) -> Result<usize, Error> {
 
     let vcpu = VCPU::new(realm.clone());
     vcpu.lock().context.sys_regs.vttbr = vttbr;
+    vcpu.lock().context.sys_regs.vmpidr = mpidr | MPIDR_EL1::RES1;
     timer::init_timer(&mut vcpu.lock());
     gic::init_gic(&mut vcpu.lock());
 
     realm.lock().vcpus.push(vcpu);
     let vcpuid = realm.lock().vcpus.len() - 1;
     Ok(vcpuid)
-}
-
-pub fn remove(id: usize) -> Result<(), Error> {
-    RMS.lock().1.remove(&id).ok_or(Error::RmiErrorInput)?;
-    Ok(())
 }

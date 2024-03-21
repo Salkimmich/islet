@@ -1,6 +1,6 @@
-use crate::realm::Realm;
-
 use crate::realm::context::Context;
+use crate::realm::Realm;
+use crate::rmi::error::Error;
 
 use alloc::collections::BTreeMap;
 use alloc::sync::Arc;
@@ -13,4 +13,9 @@ pub static RMS: Spinlock<(usize, RealmMap)> = Spinlock::new((0, BTreeMap::new())
 
 pub fn get_realm(id: usize) -> Option<RealmMutex> {
     RMS.lock().1.get(&id).map(Arc::clone)
+}
+
+pub fn remove(id: usize) -> Result<(), Error> {
+    RMS.lock().1.remove(&id).ok_or(Error::RmiErrorInput)?;
+    Ok(())
 }
