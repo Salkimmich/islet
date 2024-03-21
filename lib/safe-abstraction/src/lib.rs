@@ -32,21 +32,7 @@ pub trait RawPtr: Sized {
     /// * The pointer must point to an initialized instance of `T`.
     ///
     /// * You must enforce Rust's aliasing rules
-    unsafe fn as_ref<'a, T: RawPtr>(addr: usize) -> Option<&'a T> {
-        match Self::is_valid::<T>(addr) {
-            true => Some(&*(addr as *const T)),
-            false => None,
-        }
-    }
-
-    /// # Safety
-    ///
-    /// When calling this method, you have to ensure that all of the following is true:
-    ///
-    /// * The pointer must point to an initialized instance of `T`.
-    ///
-    /// * You must enforce Rust's aliasing rules
-    unsafe fn as_unchecked_ref<'a, T: RawPtr>(addr: usize) -> &'a T {
+    unsafe fn as_ref<'a, T: RawPtr>(addr: usize) -> &'a T {
         &*(addr as *const T)
     }
 
@@ -57,60 +43,88 @@ pub trait RawPtr: Sized {
     /// * The pointer must point to an initialized instance of `T`.
     ///
     /// * You must enforce Rust's aliasing rules
-    unsafe fn as_mut<'a, T: RawPtr>(addr: usize) -> Option<&'a mut T> {
-        match Self::is_valid::<T>(addr) {
-            true => Some(&mut *(addr as *mut T)),
-            false => None,
-        }
-    }
-
-    /// # Safety
-    ///
-    /// When calling this method, you have to ensure that all of the following is true:
-    ///
-    /// * The pointer must point to an initialized instance of `T`.
-    ///
-    /// * You must enforce Rust's aliasing rules
-    unsafe fn as_unchecked_mut<'a, T: RawPtr>(addr: usize) -> &'a mut T {
+    unsafe fn as_mut<'a, T: RawPtr>(addr: usize) -> &'a mut T {
         &mut *(addr as *mut T)
-    }
-
-    fn is_valid<T: RawPtr>(addr: usize) -> bool {
-        let ptr = addr as *const T;
-        // Safety: This cast from a raw pointer to a reference is considered safe
-        //         because it is used solely for the purpose of verifying alignment and range,
-        //         without actually dereferencing the pointer.
-        let ref_ = unsafe { &*(ptr) };
-        !ptr.is_null() && ref_.is_aligned() && ref_.has_permission()
     }
 
     fn addr(&self) -> usize {
         let ptr: *const Self = self;
         ptr as usize
     }
-
-    fn is_aligned(&self) -> bool {
-        self.addr() % core::mem::align_of::<usize>() == 0
-    }
-
-    fn has_permission(&self) -> bool;
 }
 
 pub mod raw_ptr {
-    pub fn verify<T: super::RawPtr + DeveloperAssured>(addr: usize) -> Option<Verified> {
-        match T::is_valid::<T>(addr) {
-            true => Some(Verified { addr }),
+    /// `SafetyChecked` Trait
+    ///
+    /// This trait signifies that certain safety checks
+    /// can be automatically performed by the code itself.
+    ///
+    /// Implementing this trait indicates that the associated functionality
+    /// has been designed to undergo automatic safety verification processes,
+    /// minimizing the need for manual intervention.
+    ///
+    /// It is particularly useful for encapsulating operations
+    /// that can be safely abstracted away from direct `unsafe` code usage.
+    ///
+    /// Types implementing `SafetyChecked` should ensure
+    /// that all potential safety risks are either inherently
+    /// mitigated by the implementation or are automatically checkable at compile or run time.
+    pub trait SafetyChecked: super::RawPtr {
+        fn is_not_null(&self) -> bool {
+            let ptr: *const Self = self;
+            !ptr.is_null()
+        }
+
+        fn is_aligned(&self) -> bool {
+            self.addr() % core::mem::align_of::<usize>() == 0
+        }
+
+        fn has_permission(&self) -> bool;
+    }
+
+    /// `SafetyAssured` Trait
+    ///
+    /// The `SafetyAssured` trait is intended
+    /// to be used as a marker for code sections
+    /// where safety cannot be automatically checked
+    /// or guaranteed by the compiler or runtime environment.
+    /// Instead, the safety of operations marked with this trait relies on manual checks
+    /// and guarantees provided by the developer.
+    ///
+    /// Implementing `SafetyAssured` serves
+    /// as a declaration that the developer has manually reviewed
+    /// the associated operations and is confident in their safety,
+    /// despite the inability to enforce these guarantees automatically.
+    /// It is a commitment to adhering to Rust's safety principles
+    /// while working within the necessary confines of `unsafe` code.
+    pub trait SafetyAssured {
+        fn initialized(&self) -> bool;
+        fn lifetime(&self) -> bool;
+        fn ownership(&self) -> bool;
+    }
+
+    pub fn assume<T: SafetyChecked + SafetyAssured>(addr: usize) -> Option<SafetyAssumed> {
+        let ptr = addr as *const T;
+        // Safety: This cast from a raw pointer to a reference is considered safe
+        //         because it is used solely for the purpose of verifying alignment and range,
+        //         without actually dereferencing the pointer.
+        let ref_ = unsafe { &*(ptr) };
+        let checked = ref_.is_not_null() && ref_.is_aligned() && ref_.has_permission();
+        let assured = ref_.initialized() && ref_.lifetime() && ref_.ownership();
+
+        match checked && assured {
+            true => Some(SafetyAssumed { addr }),
             false => None,
         }
     }
 
-    pub struct Verified {
+    pub struct SafetyAssumed {
         addr: usize,
     }
 
-    impl Verified {
+    impl SafetyAssumed {
         /// Provides safe access to a target structure
-        /// by ensuring that `RawPtr` and `DeveloperAssured` traits are implemented.
+        /// by ensuring that `SafetyChecked` and `SafetyAssured` traits are implemented.
         ///
         /// # Safety
         /// This function facilitates safe interaction
@@ -133,17 +147,17 @@ pub mod raw_ptr {
         /// safety guarantees are thoroughly verified.
         pub fn with<T, F, R>(&self, f: F) -> R
         where
-            T: super::RawPtr + DeveloperAssured,
+            T: SafetyChecked + SafetyAssured,
             F: Fn(&T) -> R,
         {
             unsafe {
-                let obj = T::as_unchecked_ref(self.addr);
+                let obj = T::as_ref(self.addr);
                 f(obj)
             }
         }
 
         /// Provides safe mutation to a target structure
-        /// by ensuring that `RawPtr` and `DeveloperAssured` traits are implemented.
+        /// by ensuring that `SafetyChecked` and `SafetyAssured` traits are implemented.
         ///
         /// # Safety
         /// This function facilitates safe interaction
@@ -166,19 +180,13 @@ pub mod raw_ptr {
         /// safety guarantees are thoroughly verified.
         pub fn mut_with<T, F, R>(&self, mut f: F) -> R
         where
-            T: super::RawPtr + DeveloperAssured,
+            T: SafetyChecked + SafetyAssured,
             F: FnMut(&mut T) -> R,
         {
             unsafe {
-                let obj = T::as_unchecked_mut(self.addr);
+                let obj = T::as_mut(self.addr);
                 f(obj)
             }
         }
-    }
-
-    pub trait DeveloperAssured {
-        fn initialized(&self) -> bool;
-        fn lifetime(&self) -> bool;
-        fn ownership(&self) -> bool;
     }
 }
