@@ -9,7 +9,7 @@ use crate::host::pointer::Pointer as HostPointer;
 use crate::host::pointer::PointerMut as HostPointerMut;
 use crate::listen;
 use crate::measurement::HashContext;
-use crate::realm::context::set_reg;
+use crate::realm::context::{set_reg, RegOffset};
 use crate::realm::vcpu::create_vcpu;
 use crate::rmi;
 use crate::rmi::error::Error;
@@ -65,7 +65,7 @@ pub fn set_event_handler(mainloop: &mut Mainloop) {
                 return Err(Error::RmiErrorInput);
             }
         }
-        if set_reg(rd.id(), rec.vcpuid(), 31, params.pc as usize).is_err() {
+        if set_reg(rd.id(), rec.vcpuid(), RegOffset::PC, params.pc as usize).is_err() {
             return Err(Error::RmiErrorInput);
         }
         rec.set_vtcr(prepare_vtcr(rd)?);
