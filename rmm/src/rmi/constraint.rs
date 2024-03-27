@@ -85,7 +85,7 @@ lazy_static! {
         );
         m.insert(
             rmi::RTT_SET_RIPAS,
-            Constraint::new(rmi::RTT_SET_RIPAS, 6, 2),
+            Constraint::new(rmi::RTT_SET_RIPAS, 5, 2),
         );
         m.insert(rmi::REQ_COMPLETE, Constraint::new(rmi::REQ_COMPLETE, 4, 2));
         m.insert(

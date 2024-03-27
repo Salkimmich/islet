@@ -139,13 +139,7 @@ pub fn set_event_handler(mainloop: &mut Mainloop) {
 
         crate::gic::receive_state_from_host(realm_id, rec.vcpuid(), &run)?;
         crate::mmio::emulate_mmio(realm_id, rec.vcpuid(), &run)?;
-
-        let ripas = rec.ripas_addr() as usize;
-        if ripas > 0 {
-            set_reg(realm_id, rec.vcpuid(), 0, 0)?;
-            set_reg(realm_id, rec.vcpuid(), 1, ripas)?;
-            rec.set_ripas(0, 0, 0, 0);
-        }
+        crate::rsi::ripas::complete_ripas(rec, &run)?;
 
         let wfx_flag = unsafe { run.entry_flags() };
         if wfx_flag & (REC_ENTRY_FLAG_TRAP_WFI | REC_ENTRY_FLAG_TRAP_WFE) != 0 {
