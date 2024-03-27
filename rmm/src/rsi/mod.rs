@@ -22,7 +22,7 @@ use crate::rmi::error::{Error, InternalError::NotExistRealm};
 use crate::rmi::realm::Rd;
 use crate::rmi::rec::run::Run;
 use crate::rmi::rec::{Rec, RmmRecAttestState};
-use crate::rmi::rtt::{validate_ipa, RTT_PAGE_LEVEL};
+use crate::rmi::rtt::{is_protected_ipa, validate_ipa, RTT_PAGE_LEVEL};
 use crate::rsi::hostcall::{HostCall, HOST_CALL_NR_GPRS};
 use crate::rsi::ripas::{get_ripas_state, set_ripas_state};
 use crate::Monitor;
@@ -73,6 +73,17 @@ pub fn do_host_call(
     let realmid = rec.realmid()?;
 
     let ipa = get_reg(realmid, vcpuid, 1).unwrap_or(0x0);
+    let ipa_bits = rec.ipa_bits()?;
+
+    let struct_size = core::mem::size_of::<HostCall>();
+    if ipa % struct_size != 0
+        || ipa / GRANULE_SIZE != (ipa + struct_size - 1) / GRANULE_SIZE
+        || !is_protected_ipa(ipa, ipa_bits)
+    {
+        set_reg(realmid, vcpuid, 0, ERROR_INPUT)?;
+        ret[0] = rmi::SUCCESS_REC_ENTER;
+        return Ok(());
+    }
 
     let pa = crate::realm::registry::get_realm(realmid)
         .ok_or(Error::RmiErrorOthers(NotExistRealm))?
@@ -92,8 +103,13 @@ pub fn do_host_call(
                 let val = run.entry_gpr(i)?;
                 host_call.set_gpr(i, val)?
             }
+            set_reg(realmid, vcpuid, 0, SUCCESS)?;
             rec.set_host_call_pending(false);
         } else {
+            for i in 0..HOST_CALL_NR_GPRS {
+                let val = host_call.gpr(i)?;
+                run.set_gpr(i, val)?
+            }
             run.set_imm(host_call.imm());
             run.set_exit_reason(rmi::EXIT_HOST_CALL);
             rec.set_host_call_pending(true);

@@ -24,6 +24,14 @@ impl HostCall {
         Ok(())
     }
 
+    pub unsafe fn gpr(&mut self, idx: usize) -> Result<u64, Error> {
+        if idx >= HOST_CALL_NR_GPRS {
+            error!("out of index: {}", idx);
+            return Err(Error::RmiErrorInput);
+        }
+        Ok((*self.inner.val).gprs[idx])
+    }
+
     // Safety: union type should be initialized
     // Check UB
     pub fn imm(&self) -> u16 {
