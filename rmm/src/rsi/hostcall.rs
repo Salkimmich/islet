@@ -59,7 +59,7 @@ impl core::fmt::Debug for HostCall {
     }
 }
 
-pub const HOST_CALL_NR_GPRS: usize = 7;
+pub const HOST_CALL_NR_GPRS: usize = 31;
 
 #[repr(C)]
 struct _Inner {
