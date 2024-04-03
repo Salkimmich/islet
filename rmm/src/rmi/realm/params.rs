@@ -1,10 +1,13 @@
 use crate::const_assert_eq;
 use crate::granule::{GRANULE_SHIFT, GRANULE_SIZE};
-use crate::host::Accessor as HostAccessor;
 use crate::measurement::Hashable;
+use crate::rmi::error::Error;
 use crate::rmi::features;
+use crate::rmi::realm::GranuleState;
 use crate::rmi::rtt::{RTT_PAGE_LEVEL, S2TTE_STRIDE};
 use crate::rmi::{HASH_ALGO_SHA256, HASH_ALGO_SHA512};
+use crate::{get_granule, get_granule_if};
+
 use autopadding::*;
 
 pad_struct_and_impl_default!(
@@ -59,11 +62,22 @@ impl Hashable for Params {
     }
 }
 
-impl HostAccessor for Params {
-    fn validate(&self) -> bool {
-        trace!("{:?}", self);
+impl Params {
+    pub fn ipa_bits(&self) -> usize {
+        features::ipa_bits(self.features_0 as usize)
+    }
+
+    pub fn verify_compliance(&self, rd: usize) -> Result<(), Error> {
+        if self.rtt_base as usize == rd {
+            return Err(Error::RmiErrorInput);
+        }
+
+        if self.rtt_base as usize % GRANULE_SIZE != 0 {
+            return Err(Error::RmiErrorInput);
+        }
+
         if !features::validate(self.features_0 as usize) {
-            return false;
+            return Err(Error::RmiErrorInput);
         }
 
         // Check misconfigurations between IPA size and SL
@@ -75,19 +89,48 @@ impl HostAccessor for Params {
         let max_ipa_bits = min_ipa_bits + (S2TTE_STRIDE - 1) + 4;
 
         if (ipa_bits < min_ipa_bits) || (ipa_bits > max_ipa_bits) {
-            return false;
+            return Err(Error::RmiErrorInput);
         }
 
         match self.hash_algo {
-            HASH_ALGO_SHA256 | HASH_ALGO_SHA512 => true,
-            _ => false,
+            HASH_ALGO_SHA256 | HASH_ALGO_SHA512 => Ok(()),
+            _ => Err(Error::RmiErrorInput),
         }
     }
 }
 
-impl Params {
-    pub fn ipa_bits(&self) -> usize {
-        features::ipa_bits(self.features_0 as usize)
+impl safe_abstraction::raw_ptr::RawPtr for Params {}
+
+impl safe_abstraction::raw_ptr::SafetyChecked for Params {
+    fn is_aligned(&self) -> bool {
+        // This function returns `true` to eliminate redundant checks
+        true
+    }
+
+    fn has_permission(&self) -> bool {
+        use safe_abstraction::raw_ptr::RawPtr;
+        get_granule_if!(self.addr(), GranuleState::Undelegated).is_ok()
+    }
+}
+
+impl safe_abstraction::raw_ptr::SafetyAssured for Params {
+    fn is_initialized(&self) -> bool {
+        // Given the fact that this memory is initialized by the Host,
+        // it's not possible to unequivocally guarantee
+        // that the values have been initialized from the perspective of the RMM.
+        // However, any values, whether correctly initialized or not, will undergo
+        // verification during the Measurement phase.
+        // Consequently, this function returns `true`.
+        true
+    }
+
+    fn verify_ownership(&self) -> bool {
+        // This memory has permissions from the Host's perspective,
+        // which inherently implies that exclusive ownership cannot be guaranteed by the RMM alone.
+        // However, since the RMM only performs read operations and any incorrect values will be
+        // verified during the Measurement phase.
+        // Consequently, this function returns `true`.
+        true
     }
 }
 

@@ -5,7 +5,19 @@ use crate::granule::validate_addr;
 use crate::granule::GRANULE_SIZE;
 use crate::mm::translation::PageTable;
 
+use safe_abstraction::raw_ptr::{assume_safe, SafetyAssured, SafetyChecked};
 use vmsa::guard::Content;
+
+pub fn copy_from<T: SafetyChecked + SafetyAssured + Copy>(addr: usize) -> Option<T> {
+    if !validate_addr(addr) {
+        return None;
+    }
+
+    PageTable::get_ref().map(addr, false);
+    let ret = assume_safe::<T>(addr).map(|safety_assumed| safety_assumed.with(|ref_: &T| *ref_));
+    PageTable::get_ref().unmap(addr);
+    ret
+}
 
 /// This trait is used to enforce security checks for physical region allocated by the host.
 /// This is used for `PointerGuard` which is not able to modify data.
