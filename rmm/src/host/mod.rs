@@ -21,6 +21,18 @@ pub fn copy_from<T: SafetyChecked + SafetyAssured + Copy>(addr: usize) -> Option
     ret
 }
 
+pub fn copy_to<T: SafetyChecked + SafetyAssured + Copy>(src: &T, dst: usize) -> Option<()> {
+    if !validate_addr(dst) {
+        return None;
+    }
+
+    PageTable::get_ref().map(dst, false);
+    let ret = assume_safe::<T>(dst)
+        .map(|safety_assumed| safety_assumed.mut_with(|ref_: &mut T| *ref_ = *src));
+    PageTable::get_ref().unmap(dst);
+    ret
+}
+
 /// This trait is used to enforce security checks for physical region allocated by the host.
 /// This is used for `PointerGuard` which is not able to modify data.
 pub trait Accessor {

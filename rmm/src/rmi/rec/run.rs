@@ -1,14 +1,14 @@
 use crate::const_assert_eq;
-use crate::granule::GRANULE_SIZE;
-use crate::host::Accessor as HostAccessor;
+use crate::granule::{GranuleState, GRANULE_SIZE};
 use crate::rmi::error::Error;
+use crate::{get_granule, get_granule_if};
 
 use autopadding::*;
 
 /// The structure holds data passsed between the Host and the RMM
 /// on Realm Execution Context (REC) entry and exit.
 #[repr(C)]
-#[derive(Default)]
+#[derive(Default, Copy, Clone)]
 pub struct Run {
     entry: Entry,
     exit: Exit,
@@ -186,15 +186,45 @@ pub const REC_ENTRY_FLAG_TRAP_WFE: u64 = 1 << 3;
 pub const NR_GPRS: usize = 31;
 const NR_GIC_LRS: usize = 16;
 
-impl HostAccessor for Run {
-    fn validate(&self) -> bool {
+impl Run {
+    pub fn verify_compliance(&self) -> Result<(), Error> {
         const ICH_LR_HW_OFFSET: usize = 61;
         // A6.1 Realm interrupts, HW == '0'
         for lr in &self.entry.gicv3_lrs {
             if lr & (1 << ICH_LR_HW_OFFSET) != 0 {
-                return false;
+                return Err(Error::RmiErrorRec);
             }
         }
+        Ok(())
+    }
+}
+
+impl safe_abstraction::raw_ptr::RawPtr for Run {}
+
+impl safe_abstraction::raw_ptr::SafetyChecked for Run {
+    fn is_aligned(&self) -> bool {
+        // This function returns `true` to eliminate redundant checks
+        true
+    }
+
+    fn has_permission(&self) -> bool {
+        use safe_abstraction::raw_ptr::RawPtr;
+        get_granule_if!(self.addr(), GranuleState::Undelegated).is_ok()
+    }
+}
+
+impl safe_abstraction::raw_ptr::SafetyAssured for Run {
+    fn is_initialized(&self) -> bool {
+        // Returns `true` to maintain safety at the level preserved by the existing approach.
+        // TODO: It is crucial to re-evaluate whether this aspect could potentially
+        // lead to malfunctions related to RMM's memory safety.
+        true
+    }
+
+    fn verify_ownership(&self) -> bool {
+        // Returns `true` to maintain safety at the level preserved by the existing approach.
+        // TODO: It is crucial to re-evaluate whether this aspect could potentially
+        // lead to malfunctions related to RMM's memory safety.
         true
     }
 }
