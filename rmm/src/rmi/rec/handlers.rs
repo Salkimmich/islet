@@ -8,6 +8,7 @@ use crate::event::Mainloop;
 use crate::granule::{set_granule, set_granule_with_parent, GranuleState};
 #[cfg(not(feature = "gst_page_table"))]
 use crate::granule::{set_granule, GranuleState};
+use crate::host;
 use crate::host::pointer::Pointer as HostPointer;
 use crate::host::pointer::PointerMut as HostPointerMut;
 use crate::listen;
@@ -35,8 +36,8 @@ pub fn set_event_handler(mainloop: &mut Mainloop) {
             return Err(Error::RmiErrorInput);
         }
 
-        let params = copy_from_host_or_ret!(Params, params_ptr);
-        params.validate_aux(rec, rd, params_ptr)?;
+        let params = host::copy_from::<Params>(params_ptr).ok_or(Error::RmiErrorInput)?;
+        params.verify_compliance(rec, rd, params_ptr)?;
 
         let rec_index = MPIDR::from(params.mpidr).index();
         let mut rd_granule = get_granule_if!(rd, GranuleState::RD)?;
