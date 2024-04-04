@@ -2,8 +2,10 @@
 pub mod pointer;
 
 use crate::granule::validate_addr;
+use crate::granule::GranuleState;
 use crate::granule::GRANULE_SIZE;
 use crate::mm::translation::PageTable;
+use crate::{get_granule, get_granule_if};
 
 use safe_abstraction::raw_ptr::{assume_safe, SafetyAssured, SafetyChecked};
 use vmsa::guard::Content;
@@ -53,14 +55,6 @@ pub trait Accessor {
 pub struct DataPage([u8; GRANULE_SIZE]);
 
 impl DataPage {
-    pub unsafe fn as_ptr(&self) -> *const u8 {
-        self.0.as_ptr()
-    }
-
-    pub unsafe fn as_mut_ptr(&mut self) -> *mut u8 {
-        self.0.as_ptr() as *mut u8
-    }
-
     pub fn as_slice(&self) -> &[u8] {
         self.0.as_slice()
     }
@@ -72,6 +66,39 @@ impl Default for DataPage {
     }
 }
 
-impl Accessor for DataPage {}
-
 impl Content for DataPage {}
+
+impl safe_abstraction::raw_ptr::RawPtr for DataPage {}
+
+impl safe_abstraction::raw_ptr::SafetyChecked for DataPage {
+    fn is_aligned(&self) -> bool {
+        // This function returns `true` to eliminate redundant checks
+        true
+    }
+
+    fn has_permission(&self) -> bool {
+        use safe_abstraction::raw_ptr::RawPtr;
+        get_granule_if!(self.addr(), GranuleState::Undelegated).is_ok()
+    }
+}
+
+impl safe_abstraction::raw_ptr::SafetyAssured for DataPage {
+    fn is_initialized(&self) -> bool {
+        // Given the fact that this memory is initialized by the Host,
+        // it's not possible to unequivocally guarantee
+        // that the values have been initialized from the perspective of the RMM.
+        // However, any values, whether correctly initialized or not, will undergo
+        // verification during the Measurement phase.
+        // Consequently, this function returns `true`.
+        true
+    }
+
+    fn verify_ownership(&self) -> bool {
+        // This memory has permissions from the Host's perspective,
+        // which inherently implies that exclusive ownership cannot be guaranteed by the RMM alone.
+        // However, since the RMM only performs read operations and any incorrect values will be
+        // verified during the Measurement phase.
+        // Consequently, this function returns `true`.
+        true
+    }
+}
