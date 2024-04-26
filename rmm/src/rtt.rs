@@ -380,6 +380,7 @@ pub fn set_ripas(
 ) -> Result<usize, Error> {
     // TODO: get it from s2table with the start address
     let level = RTT_PAGE_LEVEL;
+    let (_s2tte, level) = S2TTE::get_s2tte(id, base, level, Error::RmiErrorRtt(level))?;
     let map_size = level_map_size(level);
 
     let mut addr = base & !(map_size - 1);

@@ -63,7 +63,13 @@ pub fn set_event_handler(mainloop: &mut Mainloop) {
         let _ = get_granule_if!(params.rtt_base as usize, GranuleState::Delegated)?;
 
         // revisit rmi.create_realm() (is it necessary?)
-        create_realm(params.vmid, params.rtt_base as usize).map(|id| {
+        create_realm(
+            params.vmid,
+            params.rtt_base as usize,
+            params.rtt_level_start as usize,
+            params.rtt_num_start as usize,
+        )
+        .map(|id| {
             rd_obj.init(
                 id,
                 params.rtt_base as usize,
@@ -124,7 +130,12 @@ pub fn set_event_handler(mainloop: &mut Mainloop) {
     });
 }
 
-fn create_realm(vmid: u16, rtt_base: usize) -> Result<usize, Error> {
+fn create_realm(
+    vmid: u16,
+    rtt_base: usize,
+    start_level: usize,
+    num_pages: usize,
+) -> Result<usize, Error> {
     let mut rms = RMS.lock();
 
     for realm in rms.1.values() {
@@ -134,9 +145,11 @@ fn create_realm(vmid: u16, rtt_base: usize) -> Result<usize, Error> {
     }
 
     let id = rms.0;
-    let s2_table = Arc::new(Mutex::new(
-        Box::new(Stage2Translation::new(rtt_base)) as Box<dyn IPATranslation>
-    ));
+    let s2_table = Arc::new(Mutex::new(Box::new(Stage2Translation::new(
+        rtt_base,
+        start_level,
+        num_pages,
+    )) as Box<dyn IPATranslation>));
     let realm = Realm::new(id, vmid, s2_table);
 
     rms.0 += 1;
